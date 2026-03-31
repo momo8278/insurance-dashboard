@@ -2882,10 +2882,17 @@ function buildFunnelData(month,tgt3,actData,tgtMap,idxType,idxPlate){
 
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.0/lib/msal-browser.min.js"></script>
 <script>
-const SP_CONFIG={clientId:'5469b42b-e4bc-45f6-ace9-0c97b5f2c11e',tenantId:'fetcb107004.onmicrosoft.com',spHost:'fetcb107004.sharepoint.com',site:'/sites/op0',actFolder:'Shared Documents/General/保險/每日業績明細表',tgtFolder:'Shared Documents/General/保險/續保目標'};
+const SP_CONFIG={
+  clientId:'5469b42b-e4bc-45f6-ace9-0c97b5f2c11e',
+  tenantId:'fetcb107004.onmicrosoft.com',
+  spHost:'fetcb107004.sharepoint.com',
+  site:'/sites/op0',
+  actPath:'General/保險/每日業績明細表',
+  tgtPath:'General/保險/續保目標'
+};
 const msalConfig={auth:{clientId:SP_CONFIG.clientId,authority:'https://login.microsoftonline.com/'+SP_CONFIG.tenantId,redirectUri:location.origin+location.pathname},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:false}};
 const msalScopes=['https://graph.microsoft.com/Files.Read','https://graph.microsoft.com/Sites.Read.All'];
-let msalApp,msalAccount;
+let msalApp,msalAccount,_spSiteId,_spDriveId;
 function spSetStatus(msg,color){const el=document.getElementById('sp-status');el.style.display=msg?'block':'none';el.style.color=color||'#64748b';el.textContent=msg;}
 async function spGetToken(){const req={scopes:msalScopes,account:msalAccount};try{const res=await msalApp.acquireTokenSilent(req);return res.accessToken;}catch(e){const res=await msalApp.acquireTokenPopup(req);msalAccount=res.account;return res.accessToken;}}
 async function spLogin(){
@@ -2909,19 +2916,32 @@ async function spGraphGet(token,path){
   if(!r.ok)throw new Error('Graph API '+r.status+': '+await r.text());
   return r.json();
 }
-async function spDownloadFile(token,relPath){
-  const encodedPath=relPath.split('/').map(p=>encodeURIComponent(p)).join('/');
-  const meta=await spGraphGet(token,'/sites/'+SP_CONFIG.spHost+SP_CONFIG.site+':/drives/root:/'+encodedPath+'?$select=name,@microsoft.graph.downloadUrl');
-  const dlUrl=meta['@microsoft.graph.downloadUrl'];
-  if(!dlUrl)throw new Error('無法取得下載連結：'+relPath);
-  const resp=await fetch(dlUrl);
-  if(!resp.ok)throw new Error('下載失敗：'+relPath);
-  return{name:meta.name,buffer:await resp.arrayBuffer()};
+async function spGetDriveId(token){
+  if(_spDriveId)return _spDriveId;
+  // 取 site id
+  const siteData=await spGraphGet(token,'/sites/'+SP_CONFIG.spHost+':/sites/op0');
+  _spSiteId=siteData.id;
+  // 列出所有 drives，找第一個 documentLibrary（即 Shared Documents）
+  const drivesData=await spGraphGet(token,'/sites/'+_spSiteId+'/drives');
+  const drive=drivesData.value.find(d=>d.driveType==='documentLibrary')||drivesData.value[0];
+  _spDriveId=drive.id;
+  return _spDriveId;
 }
 async function spListFolder(token,folderPath){
-  const encodedPath=folderPath.split('/').map(p=>encodeURIComponent(p)).join('/');
-  const data=await spGraphGet(token,'/sites/'+SP_CONFIG.spHost+SP_CONFIG.site+':/drives/root:/'+encodedPath+':/children?$select=name,lastModifiedDateTime&$top=200');
+  const driveId=await spGetDriveId(token);
+  const encoded=folderPath.split('/').map(encodeURIComponent).join('/');
+  const data=await spGraphGet(token,'/drives/'+driveId+'/root:/'+encoded+':/children?$select=name,lastModifiedDateTime,@microsoft.graph.downloadUrl&$top=200');
   return(data.value||[]).filter(f=>f.name.endsWith('.xlsx'));
+}
+async function spDownloadFile(token,folderPath,fileName){
+  const driveId=await spGetDriveId(token);
+  const encoded=(folderPath+'/'+fileName).split('/').map(encodeURIComponent).join('/');
+  const meta=await spGraphGet(token,'/drives/'+driveId+'/root:/'+encoded+'?$select=name,@microsoft.graph.downloadUrl');
+  const dlUrl=meta['@microsoft.graph.downloadUrl'];
+  if(!dlUrl)throw new Error('無法取得下載連結：'+fileName);
+  const resp=await fetch(dlUrl);
+  if(!resp.ok)throw new Error('下載失敗：'+fileName);
+  return{name:meta.name,buffer:await resp.arrayBuffer()};
 }
 async function spLoadFiles(){
   if(!msalApp||!msalAccount){spSetStatus('請先登入 Microsoft 帳號','#dc2626');return;}
@@ -2934,27 +2954,27 @@ async function spLoadFiles(){
     // 取業績明細
     spSetStatus('讀取業績明細資料夾…','#ca8a04');
     let actFiles=[];
-    try{actFiles=await spListFolder(token,SP_CONFIG.actFolder+'/'+year);}
+    try{actFiles=await spListFolder(token,SP_CONFIG.actPath+'/'+year);}
     catch(e){
-      const all=await spListFolder(token,SP_CONFIG.actFolder);
+      const all=await spListFolder(token,SP_CONFIG.actPath);
       actFiles=all.filter(f=>f.name.includes(year));
     }
     actFiles=actFiles.filter(f=>/每日業績明細表\d{6}\.xlsx/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));
     if(actFiles.length===0){spSetStatus('找不到'+year+'年度業績明細表','#dc2626');btn.style.pointerEvents='';btn.innerHTML='<span class="si-icon">☁️</span> 從 SharePoint 載入';return;}
     // 取目標檔
     spSetStatus('讀取續保目標檔…','#ca8a04');
-    const tgtFiles=await spListFolder(token,SP_CONFIG.tgtFolder);
+    const tgtFiles=await spListFolder(token,SP_CONFIG.tgtPath);
     const tgtFile=tgtFiles.find(f=>new RegExp(year+'年度續保目標').test(f.name))||tgtFiles.find(f=>f.name.includes(year)&&f.name.includes('續保目標'));
     if(!tgtFile){spSetStatus('找不到'+year+'年度續保目標檔','#dc2626');btn.style.pointerEvents='';btn.innerHTML='<span class="si-icon">☁️</span> 從 SharePoint 載入';return;}
     // 下載
     spSetStatus('下載目標檔…','#ca8a04');
-    const tgtDl=await spDownloadFile(token,SP_CONFIG.tgtFolder+'/'+tgtFile.name);
+    const tgtDl=await spDownloadFile(token,SP_CONFIG.tgtPath,tgtFile.name);
     const actBuffers=[];
     for(let i=0;i<actFiles.length;i++){
       spSetStatus('下載 '+(i+1)+'/'+actFiles.length+'：'+actFiles[i].name,'#ca8a04');
       let dl;
-      try{dl=await spDownloadFile(token,SP_CONFIG.actFolder+'/'+year+'/'+actFiles[i].name);}
-      catch(e){dl=await spDownloadFile(token,SP_CONFIG.actFolder+'/'+actFiles[i].name);}
+      try{dl=await spDownloadFile(token,SP_CONFIG.actPath+'/'+year,actFiles[i].name);}
+      catch(e){dl=await spDownloadFile(token,SP_CONFIG.actPath,actFiles[i].name);}
       actBuffers.push(dl);
     }
     // 轉成 File 物件呼叫現有解析流程
