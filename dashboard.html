@@ -2936,9 +2936,19 @@ async function spListFolder(token,folderPath){
 async function spDownloadFile(token,folderPath,fileName){
   const driveId=await spGetDriveId(token);
   const encoded=(folderPath+'/'+fileName).split('/').map(encodeURIComponent).join('/');
-  const meta=await spGraphGet(token,'/drives/'+driveId+'/root:/'+encoded+'?$select=name,@microsoft.graph.downloadUrl');
-  const dlUrl=meta['@microsoft.graph.downloadUrl'];
-  if(!dlUrl)throw new Error('無法取得下載連結：'+fileName);
+  // 先取 meta 拿 downloadUrl，若無則改用 /content 端點直接下載
+  const meta=await spGraphGet(token,'/drives/'+driveId+'/root:/'+encoded+'?$select=name,@microsoft.graph.downloadUrl,id');
+  let dlUrl=meta['@microsoft.graph.downloadUrl'];
+  if(!dlUrl){
+    // 改用 item id 的 /content 端點（會 redirect 到實際下載位置）
+    if(!meta.id)throw new Error('無法取得檔案 ID：'+fileName);
+    const contentResp=await fetch('https://graph.microsoft.com/v1.0/drives/'+driveId+'/items/'+meta.id+'/content',{
+      headers:{Authorization:'Bearer '+token},
+      redirect:'follow'
+    });
+    if(!contentResp.ok)throw new Error('下載失敗(content)：'+fileName+' '+contentResp.status);
+    return{name:meta.name||fileName,buffer:await contentResp.arrayBuffer()};
+  }
   const resp=await fetch(dlUrl);
   if(!resp.ok)throw new Error('下載失敗：'+fileName);
   return{name:meta.name,buffer:await resp.arrayBuffer()};
