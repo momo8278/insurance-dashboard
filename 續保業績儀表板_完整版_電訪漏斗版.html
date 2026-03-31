@@ -360,6 +360,17 @@ td.merge-course{background:#f8fafc !important;color:var(--text-muted);font-size:
   </div>
 
 
+  <hr class="sidebar-divider">
+  <div class="sidebar-section">SharePoint 同步</div>
+  <div class="sidebar-item" id="btn-sp-login" onclick="spLogin()" style="color:#0078d4;font-weight:600;">
+    <span class="si-icon">🔗</span> 連結 Microsoft 帳號
+  </div>
+  <div id="sp-user-info" style="display:none;padding:4px 16px 8px;font-size:11px;color:#64748b;word-break:break-all;"></div>
+  <div class="sidebar-item" id="btn-sp-load" onclick="spLoadFiles()" style="display:none;color:#16a34a;font-weight:600;">
+    <span class="si-icon">☁️</span> 從 SharePoint 載入
+  </div>
+  <div id="sp-status" style="padding:4px 16px 8px;font-size:11px;color:#64748b;display:none;"></div>
+
   <div class="sidebar-footer">銘勁汽車 MG 營業部<br>保險業績儀表板 <span id="footer-year">2026</span></div>
 </nav>
 <div class="main-wrap">
@@ -2869,18 +2880,111 @@ function buildFunnelData(month,tgt3,actData,tgtMap,idxType,idxPlate){
 
 </script>
 
-<script type="module">
-import{initializeApp}from"https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import{getAuth,signInAnonymously,signInWithCustomToken,onAuthStateChanged}from"https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import{getFirestore,doc,setDoc,onSnapshot}from"https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-const firebaseConfig=typeof __firebase_config!=='undefined'?JSON.parse(__firebase_config):{};
-const appId=typeof __app_id!=='undefined'?__app_id:'mingjin-dashboard';
-if(Object.keys(firebaseConfig).length>0){
-  const app=initializeApp(firebaseConfig);const auth=getAuth(app);const db=getFirestore(app);window.cloudUser=null;
-  const initAuth=async()=>{try{if(typeof __initial_auth_token!=='undefined'&&__initial_auth_token){try{await signInWithCustomToken(auth,__initial_auth_token);}catch(e){await signInAnonymously(auth);}}else{await signInAnonymously(auth);}}catch(e){console.error('雲端連線失敗:',e);}};
-  onAuthStateChanged(auth,(user)=>{window.cloudUser=user;if(user){const docRef=doc(db,'artifacts',appId,'public','data','dashboard','latest');onSnapshot(docRef,(docSnap)=>{if(docSnap.exists()){if(window.renderFromCloud)window.renderFromCloud(docSnap.data());}else{const s=document.getElementById('cloud-status');s.innerHTML='⚠️ 雲端尚無資料，請上傳';s.style.color='#FFC7CE';}},err=>{console.error(err);document.getElementById('cloud-status').innerHTML='🚫 網路或權限錯誤';});}});
-  initAuth();
-  window.saveDataToCloud=async function(month,filename,crAll,tgtLen){if(!window.cloudUser){await initAuth();if(!auth.currentUser)throw new Error('無雲端存取權限');}const docRef=doc(db,'artifacts',appId,'public','data','dashboard','latest');await setDoc(docRef,{month,filename,crAll,tgtLen,agents:window.AGENTS,subtotals:window.SUBTOTALS,savedAt:new Date().toISOString()});};
-}else{console.warn('本機測試模式');document.getElementById('cloud-status').innerHTML='💻 本機測試模式';}
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.28.0/lib/msal-browser.min.js"></script>
+<script>
+const SP_CONFIG={clientId:'5469b42b-e4bc-45f6-ace9-0c97b5f2c11e',tenantId:'fetcb107004.onmicrosoft.com',spHost:'fetcb107004.sharepoint.com',site:'/sites/op0',actFolder:'Shared Documents/General/保險/每日業績明細表',tgtFolder:'Shared Documents/General/保險/續保目標'};
+const msalConfig={auth:{clientId:SP_CONFIG.clientId,authority:'https://login.microsoftonline.com/'+SP_CONFIG.tenantId,redirectUri:location.origin+location.pathname},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:false}};
+const msalScopes=['https://graph.microsoft.com/Files.Read','https://graph.microsoft.com/Sites.Read.All'];
+let msalApp,msalAccount;
+function spSetStatus(msg,color){const el=document.getElementById('sp-status');el.style.display=msg?'block':'none';el.style.color=color||'#64748b';el.textContent=msg;}
+async function spGetToken(){const req={scopes:msalScopes,account:msalAccount};try{const res=await msalApp.acquireTokenSilent(req);return res.accessToken;}catch(e){const res=await msalApp.acquireTokenPopup(req);msalAccount=res.account;return res.accessToken;}}
+async function spLogin(){
+  if(!msalApp){msalApp=new msal.PublicClientApplication(msalConfig);await msalApp.initialize();}
+  try{
+    spSetStatus('登入中…');
+    const accounts=msalApp.getAllAccounts();
+    if(accounts.length>0){msalAccount=accounts[0];}
+    else{const r=await msalApp.loginPopup({scopes:msalScopes});msalAccount=r.account;}
+    const info=document.getElementById('sp-user-info');
+    info.style.display='block';info.textContent='✓ '+(msalAccount.name||msalAccount.username);
+    document.getElementById('btn-sp-login').style.display='none';
+    document.getElementById('btn-sp-load').style.display='flex';
+    document.getElementById('cloud-status').innerHTML='🔗 已連結 SharePoint';
+    document.getElementById('cloud-status').style.color='#C6EFCE';
+    spSetStatus('登入成功，點「從 SharePoint 載入」開始同步','#16a34a');
+  }catch(e){spSetStatus('登入失敗：'+e.message,'#dc2626');}
+}
+async function spGraphGet(token,path){
+  const r=await fetch('https://graph.microsoft.com/v1.0'+path,{headers:{Authorization:'Bearer '+token}});
+  if(!r.ok)throw new Error('Graph API '+r.status+': '+await r.text());
+  return r.json();
+}
+async function spDownloadFile(token,relPath){
+  const encodedPath=relPath.split('/').map(p=>encodeURIComponent(p)).join('/');
+  const meta=await spGraphGet(token,'/sites/'+SP_CONFIG.spHost+SP_CONFIG.site+':/drives/root:/'+encodedPath+'?$select=name,@microsoft.graph.downloadUrl');
+  const dlUrl=meta['@microsoft.graph.downloadUrl'];
+  if(!dlUrl)throw new Error('無法取得下載連結：'+relPath);
+  const resp=await fetch(dlUrl);
+  if(!resp.ok)throw new Error('下載失敗：'+relPath);
+  return{name:meta.name,buffer:await resp.arrayBuffer()};
+}
+async function spListFolder(token,folderPath){
+  const encodedPath=folderPath.split('/').map(p=>encodeURIComponent(p)).join('/');
+  const data=await spGraphGet(token,'/sites/'+SP_CONFIG.spHost+SP_CONFIG.site+':/drives/root:/'+encodedPath+':/children?$select=name,lastModifiedDateTime&$top=200');
+  return(data.value||[]).filter(f=>f.name.endsWith('.xlsx'));
+}
+async function spLoadFiles(){
+  if(!msalApp||!msalAccount){spSetStatus('請先登入 Microsoft 帳號','#dc2626');return;}
+  const btn=document.getElementById('btn-sp-load');
+  btn.style.pointerEvents='none';btn.innerHTML='<span class="si-icon">⏳</span> 載入中…';
+  spSetStatus('正在連接 SharePoint…','#ca8a04');
+  try{
+    const token=await spGetToken();
+    const year=String(curYear);
+    // 取業績明細
+    spSetStatus('讀取業績明細資料夾…','#ca8a04');
+    let actFiles=[];
+    try{actFiles=await spListFolder(token,SP_CONFIG.actFolder+'/'+year);}
+    catch(e){
+      const all=await spListFolder(token,SP_CONFIG.actFolder);
+      actFiles=all.filter(f=>f.name.includes(year));
+    }
+    actFiles=actFiles.filter(f=>/每日業績明細表\d{6}\.xlsx/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));
+    if(actFiles.length===0){spSetStatus('找不到'+year+'年度業績明細表','#dc2626');btn.style.pointerEvents='';btn.innerHTML='<span class="si-icon">☁️</span> 從 SharePoint 載入';return;}
+    // 取目標檔
+    spSetStatus('讀取續保目標檔…','#ca8a04');
+    const tgtFiles=await spListFolder(token,SP_CONFIG.tgtFolder);
+    const tgtFile=tgtFiles.find(f=>new RegExp(year+'年度續保目標').test(f.name))||tgtFiles.find(f=>f.name.includes(year)&&f.name.includes('續保目標'));
+    if(!tgtFile){spSetStatus('找不到'+year+'年度續保目標檔','#dc2626');btn.style.pointerEvents='';btn.innerHTML='<span class="si-icon">☁️</span> 從 SharePoint 載入';return;}
+    // 下載
+    spSetStatus('下載目標檔…','#ca8a04');
+    const tgtDl=await spDownloadFile(token,SP_CONFIG.tgtFolder+'/'+tgtFile.name);
+    const actBuffers=[];
+    for(let i=0;i<actFiles.length;i++){
+      spSetStatus('下載 '+(i+1)+'/'+actFiles.length+'：'+actFiles[i].name,'#ca8a04');
+      let dl;
+      try{dl=await spDownloadFile(token,SP_CONFIG.actFolder+'/'+year+'/'+actFiles[i].name);}
+      catch(e){dl=await spDownloadFile(token,SP_CONFIG.actFolder+'/'+actFiles[i].name);}
+      actBuffers.push(dl);
+    }
+    // 轉成 File 物件呼叫現有解析流程
+    spSetStatus('解析資料中…','#ca8a04');
+    const toFile=dl=>new File([dl.buffer],dl.name,{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    await processFiles(actBuffers.map(toFile),toFile(tgtDl));
+    const months=actFiles.map(f=>f.name.replace('每日業績明細表','').replace('.xlsx','')).join('、');
+    spSetStatus('✓ 已載入 '+actFiles.length+' 個月份（'+months+'）','#16a34a');
+    document.getElementById('cloud-status').innerHTML='✓ SharePoint 同步完成 '+new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
+    document.getElementById('cloud-status').style.color='#C6EFCE';
+  }catch(e){console.error(e);spSetStatus('載入失敗：'+e.message,'#dc2626');}
+  btn.style.pointerEvents='';btn.innerHTML='<span class="si-icon">☁️</span> 從 SharePoint 載入';
+}
+window.addEventListener('load',async()=>{
+  try{
+    msalApp=new msal.PublicClientApplication(msalConfig);
+    await msalApp.initialize();
+    await msalApp.handleRedirectPromise().catch(()=>{});
+    const accounts=msalApp.getAllAccounts();
+    if(accounts.length>0){
+      msalAccount=accounts[0];
+      document.getElementById('sp-user-info').style.display='block';
+      document.getElementById('sp-user-info').textContent='✓ '+(msalAccount.name||msalAccount.username);
+      document.getElementById('btn-sp-login').style.display='none';
+      document.getElementById('btn-sp-load').style.display='flex';
+      document.getElementById('cloud-status').innerHTML='🔗 已連結 SharePoint';
+      document.getElementById('cloud-status').style.color='#C6EFCE';
+      spSetStatus('上次登入仍有效，可直接載入','#16a34a');
+    }
+  }catch(e){console.warn('MSAL init:',e);}
+});
 </script>
 </body></html>
