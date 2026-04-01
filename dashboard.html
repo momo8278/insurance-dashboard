@@ -370,6 +370,7 @@ td.merge-course{background:#f8fafc !important;color:var(--text-muted);font-size:
     <span class="si-icon">☁️</span> 從 SharePoint 載入
   </div>
   <div id="sp-status" style="padding:4px 16px 8px;font-size:11px;color:#64748b;display:none;"></div>
+  <div id="auto-refresh-status" style="padding:4px 16px 8px;font-size:11px;color:#10b981;display:none;"></div>
 
   <div class="sidebar-footer">銘勁汽車 MG 營業部<br>保險業績儀表板 <span id="footer-year">2026</span></div>
 </nav>
@@ -2909,6 +2910,7 @@ async function spLogin(){
     document.getElementById('cloud-status').innerHTML='🔗 已連結 SharePoint';
     document.getElementById('cloud-status').style.color='#C6EFCE';
     spSetStatus('登入成功，點「從 SharePoint 載入」開始同步','#16a34a');
+    startAutoRefresh(); startWebhookListener();
   }catch(e){spSetStatus('登入失敗：'+e.message,'#dc2626');}
 }
 async function spGraphGet(token,path){
@@ -2998,6 +3000,69 @@ async function spLoadFiles(){
   }catch(e){console.error(e);spSetStatus('載入失敗：'+e.message,'#dc2626');}
   btn.style.pointerEvents='';btn.innerHTML='<span class="si-icon">☁️</span> 從 SharePoint 載入';
 }
+// ============================================================
+// 自動定時更新：每小時從 SharePoint 重新載入
+// ============================================================
+let _arTimer=null, _arCountdown=null, _nextRefreshAt=0;
+
+function updateRefreshCountdown(){
+  const el=document.getElementById('auto-refresh-status');
+  if(!el||!_nextRefreshAt)return;
+  const rem=Math.max(0,_nextRefreshAt-Date.now());
+  const m=Math.floor(rem/60000);
+  const s=String(Math.floor((rem%60000)/1000)).padStart(2,'0');
+  el.textContent='⏱ 下次自動更新：'+m+'分'+s+'秒後';
+}
+
+function startAutoRefresh(){
+  if(_arTimer)clearInterval(_arTimer);
+  if(_arCountdown)clearInterval(_arCountdown);
+  const INTERVAL=3600000; // 1小時
+  _nextRefreshAt=Date.now()+INTERVAL;
+  const el=document.getElementById('auto-refresh-status');
+  if(el)el.style.display='block';
+  _arTimer=setInterval(async()=>{
+    if(msalAccount){
+      console.log('[AutoRefresh] 自動載入 SharePoint 資料…');
+      _nextRefreshAt=Date.now()+INTERVAL;
+      await spLoadFiles();
+    }
+    _nextRefreshAt=Date.now()+INTERVAL;
+  },INTERVAL);
+  _arCountdown=setInterval(updateRefreshCountdown,1000);
+  updateRefreshCountdown();
+}
+
+// ============================================================
+// Webhook 監聽：透過 ntfy.sh Server-Sent Events 接收 PA 推播
+// Power Automate 存完檔後 POST 到 NTFY_TOPIC 即可即時觸發載入
+// ============================================================
+const NTFY_TOPIC='mjmotor-insurance-sp-trigger-2026';
+let _ntfyEs=null;
+
+function startWebhookListener(){
+  if(_ntfyEs){_ntfyEs.close();_ntfyEs=null;}
+  try{
+    const url='https://ntfy.sh/'+NTFY_TOPIC+'/sse';
+    _ntfyEs=new EventSource(url);
+    _ntfyEs.onmessage=async(evt)=>{
+      const data=evt.data?JSON.parse(evt.data):null;
+      if(data&&data.event==='message'){
+        console.log('[Webhook] 收到 Power Automate 推播，立即重新載入');
+        // 重設倒數
+        _nextRefreshAt=Date.now()+3600000;
+        const el=document.getElementById('cloud-status');
+        if(el){el.innerHTML='📨 收到更新通知，載入中…';el.style.color='#fef08a';}
+        if(msalAccount)await spLoadFiles();
+      }
+    };
+    _ntfyEs.onerror=()=>{
+      // SSE 斷線自動重連，不需特別處理
+    };
+    console.log('[Webhook] 開始監聽 ntfy.sh：'+NTFY_TOPIC);
+  }catch(e){console.warn('[Webhook] 無法啟動監聽:',e);}
+}
+
 window.addEventListener('load',async()=>{
   try{
     msalApp=new msal.PublicClientApplication(msalConfig);
@@ -3013,6 +3078,7 @@ window.addEventListener('load',async()=>{
       document.getElementById('cloud-status').innerHTML='🔗 已連結 SharePoint';
       document.getElementById('cloud-status').style.color='#C6EFCE';
       spSetStatus('上次登入仍有效，可直接載入','#16a34a');
+      startAutoRefresh(); startWebhookListener();
     }
   }catch(e){console.warn('MSAL init:',e);}
 });
