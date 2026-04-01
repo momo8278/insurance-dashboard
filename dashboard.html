@@ -2992,7 +2992,10 @@ async function spLoadFiles(){
     // 轉成 File 物件呼叫現有解析流程
     spSetStatus('解析資料中…','#ca8a04');
     const toFile=dl=>new File([dl.buffer],dl.name,{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    await processFiles(actBuffers.map(toFile),toFile(tgtDl));
+    // ★ 修正：先將 SP 下載的檔案指定給全域變數，processFiles() 才能讀取
+    fileActList=actBuffers.map(toFile);
+    fileTgt=toFile(tgtDl);
+    await processFiles();
     const months=actFiles.map(f=>f.name.replace('每日業績明細表','').replace('.xlsx','')).join('、');
     spSetStatus('✓ 已載入 '+actFiles.length+' 個月份（'+months+'）','#16a34a');
     document.getElementById('cloud-status').innerHTML='✓ SharePoint 同步完成 '+new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
