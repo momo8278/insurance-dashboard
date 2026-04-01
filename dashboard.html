@@ -1615,6 +1615,16 @@ document.addEventListener('DOMContentLoaded',()=>{
   if(grandInit)updateKPI(grandInit,3);
   buildTable();buildCharts();
   buildMonthGrid();
+  // ★ 自動切換到當月（有資料）或最近一個有資料的月份
+  (function(){
+    const todayM = new Date().getMonth() + 1; // 目前月份 1-12
+    const annData = getAnnualData();
+    let target = null;
+    // 優先選當月，若無資料則往前找最近一個有資料的月份
+    if(annData[todayM]){ target = todayM; }
+    else { for(let m = todayM - 1; m >= 1; m--){ if(annData[m]){ target = m; break; } } }
+    if(target) switchMonth(target);
+  })();
 });
 // ══════════════════════════════════════════════
 // Sidebar 邏輯
