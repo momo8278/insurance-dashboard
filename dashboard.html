@@ -2900,7 +2900,7 @@ const SP_CONFIG={
   tenantId:'fetcb107004.onmicrosoft.com',
   spHost:'fetcb107004.sharepoint.com',
   site:'/sites/op0',
-  actPath:'General/保險/每日業績明細表',
+  actPath:'General/保險/每月投保明細',
   tgtPath:'General/保險/續保目標'
 };
 const msalConfig={auth:{clientId:SP_CONFIG.clientId,authority:'https://login.microsoftonline.com/'+SP_CONFIG.tenantId,redirectUri:location.origin+location.pathname},cache:{cacheLocation:'localStorage',storeAuthStateInCookie:false}};
@@ -2919,13 +2919,10 @@ async function spLogin(){
     info.style.display='block';info.textContent='✓ '+(msalAccount.name||msalAccount.username);
     document.getElementById('btn-sp-login').style.display='none';
     document.getElementById('btn-sp-load').style.display='flex';
-    document.getElementById('cloud-status').innerHTML='☁️ 自動載入中…';
-    document.getElementById('cloud-status').style.color='#fef08a';
-    spSetStatus('登入成功，自動載入 SharePoint 資料…','#ca8a04');
-    startWebhookListener();
-    // 登入後直接自動載入，不需再手動按「從 SharePoint 載入」
-    await spLoadFiles();
-    startAutoRefresh();
+    document.getElementById('cloud-status').innerHTML='🔗 已連結 SharePoint';
+    document.getElementById('cloud-status').style.color='#C6EFCE';
+    spSetStatus('登入成功，點「從 SharePoint 載入」開始同步','#16a34a');
+    startAutoRefresh(); startWebhookListener();
   }catch(e){spSetStatus('登入失敗：'+e.message,'#dc2626');}
 }
 async function spGraphGet(token,path){
@@ -2987,7 +2984,7 @@ async function spLoadFiles(){
       actFiles=all.filter(f=>f.name.includes(year));
     }
     actFiles=actFiles.filter(f=>/每日業績明細表\d{6}\.xlsx/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));
-    if(actFiles.length===0){spSetStatus('找不到'+year+'年度業績明細表','#dc2626');btn.style.pointerEvents='';btn.innerHTML='<span class="si-icon">☁️</span> 從 SharePoint 載入';return;}
+    if(actFiles.length===0){spSetStatus('找不到'+year+'年度業績明細表（路徑：每月投保明細/'+year+'）','#dc2626');btn.style.pointerEvents='';btn.innerHTML='<span class="si-icon">☁️</span> 從 SharePoint 載入';return;}
     // 取目標檔
     spSetStatus('讀取續保目標檔…','#ca8a04');
     const tgtFiles=await spListFolder(token,SP_CONFIG.tgtPath);
@@ -3088,33 +3085,15 @@ window.addEventListener('load',async()=>{
     await msalApp.handleRedirectPromise().catch(()=>{});
     const accounts=msalApp.getAllAccounts();
     if(accounts.length>0){
-      // ── 已有登入快取：靜默取 Token 並直接自動載入，同仁不需手動點任何按鈕 ──
       msalAccount=accounts[0];
       document.getElementById('sp-user-info').style.display='block';
       document.getElementById('sp-user-info').textContent='✓ '+(msalAccount.name||msalAccount.username);
       document.getElementById('btn-sp-login').style.display='none';
       document.getElementById('btn-sp-load').style.display='flex';
-      document.getElementById('cloud-status').innerHTML='☁️ 自動載入中…';
-      document.getElementById('cloud-status').style.color='#fef08a';
-      spSetStatus('自動連線 SharePoint 中…','#ca8a04');
-      startWebhookListener();
-      // 靜默驗證成功後直接載入，確認 Token 有效才啟動自動刷新
-      try{
-        await spGetToken(); // 確認 token 可取得（有快取則靜默完成，不跳 popup）
-        await spLoadFiles();
-        startAutoRefresh();
-      }catch(e){
-        // Token 靜默刷新失敗（如已過期），提示使用者重新登入
-        document.getElementById('cloud-status').innerHTML='🔑 請重新登入';
-        document.getElementById('cloud-status').style.color='#FFC7CE';
-        spSetStatus('登入憑證已過期，請點「連結 Microsoft 帳號」重新登入','#dc2626');
-        document.getElementById('btn-sp-login').style.display='flex';
-        document.getElementById('btn-sp-load').style.display='none';
-        console.warn('[AutoLoad] Token 取得失敗，需重新登入:',e);
-      }
-    }else{
-      // ── 尚未登入過：顯示提示，等待使用者手動點擊登入 ──
-      spSetStatus('請點擊下方按鈕連結 Microsoft 帳號以載入最新資料','#64748b');
+      document.getElementById('cloud-status').innerHTML='🔗 已連結 SharePoint';
+      document.getElementById('cloud-status').style.color='#C6EFCE';
+      spSetStatus('上次登入仍有效，可直接載入','#16a34a');
+      startAutoRefresh(); startWebhookListener();
     }
   }catch(e){console.warn('MSAL init:',e);}
 });
