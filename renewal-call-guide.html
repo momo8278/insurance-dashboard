@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>續保電訪系統・操作教學</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#ffffff; --ink:#1e293b; --muted:#64748b;
+    --line:#e2e8f0; --brand:#1e3a5f; --accent:#e11d48; --new:#7c3aed;
+    --warn:#d97706; --shadow:0 1px 3px rgba(15,23,42,.08),0 6px 20px rgba(15,23,42,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Microsoft JhengHei","Segoe UI",system-ui,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.6;padding:24px 16px 64px}
+  .wrap{max-width:1180px;margin:0 auto}
+
+  header.top{text-align:center;margin-bottom:28px}
+  header.top .kicker{display:inline-block;background:var(--brand);color:#fff;
+    font-size:13px;letter-spacing:2px;padding:5px 14px;border-radius:999px;margin-bottom:12px}
+  header.top h1{font-size:28px;font-weight:800;color:var(--brand)}
+  header.top p{color:var(--muted);margin-top:8px;font-size:15px}
+  header.top .entry{display:inline-flex;align-items:center;gap:8px;margin-top:14px;
+    background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 16px;
+    font-size:14px;box-shadow:var(--shadow)}
+  header.top .entry a{color:var(--brand);font-weight:700;text-decoration:none;word-break:break-all}
+
+  /* 截圖 + 標註 */
+  .stage-card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:16px;box-shadow:var(--shadow);margin-bottom:28px}
+  .stage-hint{font-size:13px;color:var(--muted);margin-bottom:12px;display:flex;
+    align-items:center;gap:8px;flex-wrap:wrap}
+  .stage-hint b{color:var(--ink)}
+  .stage{position:relative;width:100%;border-radius:10px;overflow:hidden;
+    border:1px solid var(--line);background:#0f172a08}
+  .stage img{display:block;width:100%;height:auto}
+  .stage .fallback{padding:60px 24px;text-align:center;color:var(--muted);
+    background:repeating-linear-gradient(45deg,#f8fafc,#f8fafc 12px,#f1f5f9 12px,#f1f5f9 24px);
+    font-size:14px;display:none}
+  .stage.noimg img{display:none}
+  .stage.noimg .fallback{display:block}
+
+  .pin{position:absolute;transform:translate(-50%,-50%);width:25px;height:25px;
+    border-radius:50%;background:var(--accent);color:#fff;font-weight:800;font-size:13px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);z-index:2;
+    transition:transform .12s ease,box-shadow .12s ease}
+  .pin:hover,.pin.active{transform:translate(-50%,-50%) scale(1.25);
+    box-shadow:0 0 0 5px rgba(225,29,72,.25),0 2px 10px rgba(0,0,0,.4);z-index:3}
+  .pin.new{background:var(--new)}
+  .pin.warn{background:var(--warn)}
+
+  /* 說明清單 */
+  .legend h2{font-size:18px;color:var(--brand);margin:0 0 4px}
+  .legend .sub{color:var(--muted);font-size:13px;margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+  .item{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;display:flex;gap:12px;box-shadow:var(--shadow);
+    scroll-margin-top:20px;transition:border-color .15s ease,box-shadow .15s ease}
+  .item.active{border-color:var(--accent);box-shadow:0 0 0 3px rgba(225,29,72,.15),var(--shadow)}
+  .item .num{flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:var(--accent);
+    color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .item.new .num{background:var(--new)}
+  .item.warn .num{background:var(--warn)}
+  .item .body h3{font-size:15px;margin:0 0 3px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .item .body p{font-size:13.5px;color:var(--muted);margin:0}
+  .tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;color:#fff}
+  .tag.new{background:var(--new)}
+  .tag.warn{background:var(--warn)}
+
+  .note{background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:14px 16px;
+    margin-top:22px;font-size:13.5px;color:#9a3412;display:flex;gap:10px}
+  .note b{color:#7c2d12}
+
+  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:36px}
+  @media(max-width:640px){
+    header.top h1{font-size:22px}
+    .pin{width:24px;height:24px;font-size:12px;border-width:2px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <span class="kicker">操作教學</span>
+    <h1>續保電訪系統・操作教學</h1>
+    <p>一張圖看懂各區塊功能。點畫面上的紅點，或點下方說明，會互相對應高亮。</p>
+    <div class="entry">
+      入口 👉 <a href="https://mjmotor.z7.web.core.windows.net/insurance/renewal-call.html" target="_blank" rel="noopener">續保電訪系統・銘勁汽車</a>
+    </div>
+  </header>
+
+  <div class="stage-card">
+    <div class="stage-hint">
+      <b>提示</b>：請把系統截圖存成 <b>renewal-call-screen.png</b> 放在本檔同一資料夾，畫面即會出現。標註座標可在原始碼最下方的 <b>CALLOUTS</b> 陣列微調。
+    </div>
+    <div class="stage" id="stage">
+      <img src="renewal-call-screen.png" alt="續保電訪系統畫面" id="shot">
+      <div class="fallback">尚未載入截圖<br>請將畫面截圖存成 <b>renewal-call-screen.png</b> 放在本檔同一資料夾</div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <h2>功能說明</h2>
+    <div class="sub">共 <span id="count"></span> 項；<span class="tag new" style="padding:1px 7px">新</span> 為新版新增功能</div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div class="note">
+    <span>⚠️</span>
+    <div><b>續保單預覽警語：</b>「即時預覽續保單」係依據福灣保代提供的資料產出，涵蓋 富邦・國泰・新光・第一・兆豐・華南・旺旺友聯 七家產險（新安東京除外），目前有 2026/08、2026/09 資料。此畫面<b>非正式要保書格式，客戶不可直接於上面簽名並出單</b>。</div>
+  </div>
+
+  <footer>銘勁汽車・保險部　續保電訪系統操作教學</footer>
+</div>
+
+<script>
+// 標註資料：left/top 為相對截圖的百分比座標，可自由微調
+const CALLOUTS = [
+  {n:1,  x:12,   y:24, title:"選擇到期月份", desc:"下拉切換要看哪個月份到期的客戶名單。"},
+  {n:2,  x:12,   y:28, title:"依業代篩選 / 搜尋", desc:"可依顧問（業代）篩選，或用姓名、車牌搜尋單一客戶。"},
+  {n:3,  x:4,    y:43.5, title:"匯出名單（Excel）", desc:"把目前篩選後的名單匯出成 Excel。"},
+  {n:4,  x:84,   y:14, title:"改派", desc:"所長分派功能，主要用於離職業代的名單轉派。"},
+  {n:5,  x:91,   y:14, title:"提醒業代", desc:"一鍵提醒原業代跟進。", badge:"warn", badgeText:"尚未開放"},
+  {n:6,  x:95.5, y:14, title:"續保通知訊息", desc:"帶入通知範本，可自行調整內容，複製後貼到 LINE 傳給客戶。", badge:"new"},
+  {n:7,  x:34,   y:27, title:"今年已續保區塊", desc:"若今年已續保會顯示此區塊，比對今年新單的投保明細（保險公司、應收保費、險種）。"},
+  {n:8,  x:81,   y:33, title:"續保單／報價單", desc:"即時預覽續保單，跟客戶報價更快。（依福灣保代資料產出，見下方警語）", badge:"new"},
+  {n:9,  x:25,   y:51, title:"保單明細（可展開）", desc:"去年的投保內容與資訊；「保費明細」可展開看逐項險種。"},
+  {n:10, x:27,   y:69, title:"同車牌歷史電訪紀錄", desc:"顯示此車牌過去的電訪往來紀錄。"},
+  {n:11, x:62,   y:40, title:"接觸狀態（登打電訪）", desc:"登打今年的電訪結果：待電訪／已聯繫／待回撥／已續保／轉投他保／客戶拒絕／無法聯繫／已提供報價單／已過戶。"},
+  {n:12, x:72,   y:60, title:"下次追蹤日 / 顧問備註", desc:"記錄下次追蹤日與客戶反應、報價內容、約定事項。"},
+  {n:13, x:92,   y:88.5, title:"儲存並下一筆", desc:"存檔後自動跳到下一筆待電訪，連續作業更快。"},
+  {n:14, x:72,   y:95, title:"接觸歷程", desc:"展開可看本客戶歷次電訪的時間、狀態與備註。"},
+];
+
+const stage = document.getElementById('stage');
+const grid  = document.getElementById('grid');
+document.getElementById('count').textContent = CALLOUTS.length;
+
+function cls(c){ return c.badge==='new'?'new':(c.badge==='warn'?'warn':''); }
+
+CALLOUTS.forEach(c=>{
+  const pin=document.createElement('div');
+  pin.className='pin '+cls(c);
+  pin.style.left=c.x+'%'; pin.style.top=c.y+'%';
+  pin.textContent=c.n; pin.dataset.n=c.n;
+  stage.appendChild(pin);
+
+  const item=document.createElement('div');
+  item.className='item '+cls(c);
+  item.id='item-'+c.n;
+  let badge = c.badge==='new' ? '<span class="tag new">新</span>'
+            : c.badge==='warn' ? '<span class="tag warn">'+(c.badgeText||'')+'</span>' : '';
+  item.innerHTML='<div class="num">'+c.n+'</div>'+
+    '<div class="body"><h3>'+c.title+' '+badge+'</h3><p>'+c.desc+'</p></div>';
+  grid.appendChild(item);
+
+  const activate=()=>{
+    document.querySelectorAll('.pin.active,.item.active').forEach(e=>e.classList.remove('active'));
+    pin.classList.add('active'); item.classList.add('active');
+  };
+  pin.addEventListener('click',()=>{ activate(); item.scrollIntoView({behavior:'smooth',block:'center'}); });
+  item.addEventListener('click',activate);
+});
+
+// 截圖載入失敗 → 顯示提示
+const shot=document.getElementById('shot');
+shot.addEventListener('error',()=>stage.classList.add('noimg'));
+if(shot.complete && shot.naturalWidth===0) stage.classList.add('noimg');
+</script>
+</body>
+</html>
